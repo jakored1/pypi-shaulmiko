@@ -8,7 +8,7 @@ setup(
   author = 'Jakored and Ashal148148 on github',                   # Type in your name
   author_email = 'benja.bzness@gmail.com',      # Type in your E-Mail
   url = 'https://github.com/jakored1/ShaulMiko',   # Provide either the link to your github or to your website
-  download_url = 'https://github.com/jakored1/pypi-shaulmiko/archive/refs/tags/v_0.2.tar.gz',    # I explain this later on
+  download_url = 'https://github.com/jakored1/pypi-shaulmiko/archive/refs/tags/v0.1.tar.gz',    # I explain this later on
   keywords = ['ShaulMiko', 'SSH', 'ssh', 'session', 'telnetlib', 'tty', 'cisco', 'router', 'switch', 'jakored', 'Ashal'],   # Keywords that define your package best
   install_requires=[            # I get to this in a second
           'paramiko',
