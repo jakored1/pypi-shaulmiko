@@ -2,6 +2,7 @@ import paramiko
 import threading
 import re
 import time
+from typing import List, Union
 
 
 class ShaulMiko:
@@ -9,9 +10,9 @@ class ShaulMiko:
     """
 
     # Make the connection
-    def __init__(self, host, port, username, password, set_terminal_length=True, get_pty=True):
+    def __init__(self, host, port, username, password, set_terminal_length=False, get_pty=True):
         """
-
+        
         """
         # Creating SSH Client
         self.ssh = paramiko.SSHClient()
@@ -24,10 +25,10 @@ class ShaulMiko:
         # Creating a session
         if get_pty:
             self.channel = self.ssh.get_transport().open_session()
-            self.channel.get_pty()
+            self.channel.get_pty(width=999999, height=999999)
             self.channel.invoke_shell()
         else:
-            self.channel: paramiko.channel.Channel = self.ssh.invoke_shell()
+            self.channel: paramiko.channel.Channel = self.ssh.invoke_shell(width=999999, height=999999)
 
         # Creating 'write' stream
         self.stdin = self.channel.makefile('wb')
@@ -46,6 +47,8 @@ class ShaulMiko:
         self.buffer_size = 1024
         # Creating a stop event flag
         self._stop = False
+        # Creating found_string flag (to know what string was found in _read_until)
+        self._found_string = ""
         # Clearing buffer to get rid of banner
         self.clear_buffer()
         # When we want to clear the prompt we should keep a copy of it instead of finding it every time
@@ -55,13 +58,19 @@ class ShaulMiko:
     def __del__(self):
         self.ssh.close()
 
-    def read_until(self, read_until_string: str, timeout=None):
+    def read_until(self, read_until_string: Union[List[str], str], timeout=None):
         """
         Reads all the output of the session until matching string/substring, or timeout. Whatever happens first
         :param timeout: Number of seconds before we stop reading the session content
         :param read_until_string: The string/substring we stop reading at
         :return: The output of the session
         """
+
+        # Validating read_until_string
+
+        if not isinstance(read_until_string, str) and not isinstance(read_until_string, list):
+            raise TypeError("read_until_string Received type " + str(type(read_until_string)) + ", expected type "
+                                                                                                "'str' or 'list'")
 
         # Creating a thread that reads the output
         thread = threading.Thread(target=self._read_thread, args=(read_until_string,))
@@ -80,7 +89,7 @@ class ShaulMiko:
         # If timeout was not reached and output was fully read until 'read_until_string'
         if not timeout_reached:
             # Slice output at read until line
-            index = output.find(read_until_string)
+            index = output.find(self._found_string)
             new_line_finder = self._normalize_linefeeds(output[index:])
             output = output[:index] + new_line_finder.split("\n")[0]
 
@@ -132,7 +141,7 @@ class ShaulMiko:
         """
         Sends a command to the open connection
         :param no_newline: If the user wishes to send the command without the newline '\n' character
-        :param command: The comand to send to the session
+        :param command: The command to send to the session
         :return:
         """
         if no_newline:
@@ -153,6 +162,18 @@ class ShaulMiko:
         :param read_until_string: The string we stop reading the output at
         :return: returns the output of the command
         """
+
+        # Checking what read_until_string is
+        if isinstance(read_until_string, str):
+            list_of_strings = False
+        elif isinstance(read_until_string, list):
+            list_of_strings = True
+        else:
+            raise TypeError("read_until_string Received type " + str(type(read_until_string)) + ", expected type "
+                                                                                                "'str' or 'list'")
+
+        found_string = False
+
         # Clearing buffer
         output = ""
         # Constantly reading output
@@ -160,9 +181,36 @@ class ShaulMiko:
             # Reading output
             last_output = self._strip_ansi_escape_codes(self._read_channel())
             output += last_output
-            # If read until in output
-            if read_until_string in last_output:
-                break
+
+            # If we got a list of strings
+            if list_of_strings:
+                # Going over the strings in the list
+                for string in read_until_string:
+                    if string in last_output:
+                        found_string = True
+                        self._found_string = string
+                        break
+                # If one of the strings was found in the chunk
+                if found_string:
+                    found_strings_list = []
+                    lowest_index = last_output.find(self._found_string)
+                    # Checking which strings appeared in the chunk
+                    for string in read_until_string:
+                        if string in last_output:
+                            found_strings_list.append(string)
+                    # Checking which of the strings appeared first
+                    for string in found_strings_list:
+                        index = last_output.find(string)
+                        if index != -1 and index < lowest_index:
+                            self._found_string = string
+                            lowest_index = index
+                    break
+            else:
+                # Checking if we got read_until_string in the output
+                if read_until_string in last_output:
+                    self._found_string = read_until_string
+                    break
+
             # If timeout was reached
             if self._stop:
                 self._stop = False
@@ -172,7 +220,7 @@ class ShaulMiko:
         self._raw_output = output
 
     # Execute the commands with checking if it succeeded
-    def execute(self, command: str, read_until_string=None, timeout=None, clean_prompt=False):
+    def execute(self, command: str, read_until_string: Union[List[str], str] = None, timeout=None, clean_prompt=False):
         """
         :param clean_prompt: Set to true to remove the prompt from the end of the output
         :param timeout: The amount of seconds until shaulmiko stops trying to read the output
@@ -190,6 +238,10 @@ class ShaulMiko:
         else:
             # Clearing session contents to make sure the next command doesn't have leftovers from the last command
             self.clear_buffer()
+            # Validating read_until_string
+            if not isinstance(read_until_string, str) and not isinstance(read_until_string, list):
+                raise TypeError("read_until_string Received type " + str(type(read_until_string)) + ", expected type "
+                                                                                                    "'str' or 'list'")
 
         # Run the command
         self.channel.send(command + "\n")
@@ -207,12 +259,12 @@ class ShaulMiko:
             timeout_reached = True
 
         # Clearing output of the command we sent
-        output = self._raw_output.replace(command + '\r\n', '').replace(command + '\n', '')
+        output = self._raw_output.replace(command + "\r\n", "", 1).replace(command + "\n", "", 1)
 
         # If timeout was not reached and output was fully read until 'read_until_string'
         if not timeout_reached:
             # Slice output at read until line
-            index = output.find(read_until_string)
+            index = output.find(self._found_string)
             new_line_finder = self._normalize_linefeeds(output[index:])
             output = output[:index] + new_line_finder.split("\n")[0]
 
@@ -316,6 +368,7 @@ class ShaulMiko:
         if not prompt:
             raise ValueError("Unable to  find prompt: {}".format(prompt))
         time.sleep(delay_factor * 0.1)
+        self._prompt = prompt
         return prompt
 
     def _normalize_linefeeds(self, a_string):
