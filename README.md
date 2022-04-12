@@ -34,6 +34,8 @@
 		By default the module will find the devices prompt,
 		and will search for it after the command was entered to determine wether the command finished.
 		read_until_string allows the user to manually define a string on which to stop reading the output.
+		read_until_string can be one string, or a list of strings.
+		If a list was entered the output will be read until one of the strings is found in the output
 	- timeout:
 		By default there is no timeout and the module will continue to wait for output until device prompt (or read_until_string) is found.
 		timeout allows user to stop reading output after X seconds.
@@ -57,6 +59,8 @@
 	
 	- read_until_string:
 		read_until_string allows the user to manually define the string on which to stop reading the output.
+		read_until_string can be one string, or a list of strings.
+		If a list was entered the output will be read until one of the strings is found in the output
 	- timeout:
 		By default there is no timeout and the module will continue to wait for output until read_until_string is found.
 		timeout allows user to stop reading output after X seconds.
@@ -83,6 +87,8 @@ Import ShaulMiko
 
 session = ShaulMiko.ShaulMiko('1.1.1.1', 22, 'user', 'password')
 output = session.execute('hostname')
+print(output)
+
 session.close_session()
 ```
 
@@ -93,6 +99,10 @@ session = ShaulMiko.ShaulMiko('1.1.1.1', 22, 'user', 'password')
 session.write('enable')
 output = session.read_until('Password:', timeout=5)
 session.write('password')
-output = session.read_until('#', timeout=5)
+output = session.read_until(['#', '>'], timeout=5)
+
+output = session.execute('show interface description', clean_prompt=True, read_until_string='Te1/1', timeout=5)
+print(output)
+
 session.close_session()
 ```
